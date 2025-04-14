@@ -1,0 +1,89 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  labels:
+    istio.io/waypoint-for: service
+  name: waypoint
+  namespace: test
+spec:
+  gatewayClassName: istio-waypoint
+  listeners:
+  - name: mesh
+    port: 15008
+    protocol: HBONE
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: nginx-gateway
+  namespace: test
+spec:
+  selector:
+    istio: ingressgateway # use istio default ingress gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "fabian.rocks" # or specify your domain
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: nginx-virtualservice
+  namespace: test
+spec:
+  hosts:
+  - "fabian.rocks" # or your domain if specified in the gateway
+  gateways:
+  - nginx-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: nginx-service
+        port:
+          number: 80
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: nginx-service
+  namespace: test
+spec:
+  hosts:
+  - nginx-service.test.svc.cluster.local
+  http:
+  - name: "nginx-v2"
+    match:
+    - uri:
+        prefix: "/v2"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: nginx-service.test.svc.cluster.local
+        subset: v2
+  - name: "nginx-v1"
+    route:
+    - destination:
+        host: nginx-service.test.svc.cluster.local
+        subset: v1
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: nginx-destination
+  namespace: test
+spec:
+  host: nginx-service.test.svc.cluster.local
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
